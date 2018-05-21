@@ -33,8 +33,8 @@
 //*********************************************************************
 
 //****Instantiate Peripheral Objects*********************************
-  Adafruit_ADS1115 ads1(0x48);  /* Use this for the 16-bit version */
-  Adafruit_ADS1115 ads2(0x49);  /* Use this for the 16-bit version */
+  Adafruit_ADS1115 ads1(0x48);  /* current monitor */
+  Adafruit_ADS1115 ads2(0x49);  /* control board */
   Thanos_INA260 ina260;
   #define lcd Serial1 //LCD connected to Serial1, hope it doesn't conflict with the Current Alert on RXD pin!
   
@@ -104,11 +104,32 @@ void loop() {
   //  }
   //}
   
-  float   pa_temp = getTemp();
-  Serial.println(pa_temp);
-  getPower();
-  Blink(LED_PIN,1000,1); // wait for a second
-  delay(1000);
+  //float   pa_temp = getTemp();
+  //float   i_temp = getImonTemp();
+
+  float i_temp    = getADCTemp(ads1, 0);     //I monitor, temp
+  float case_temp = getADCTemp(ads2, 3);  //Ctrl Brd, Case temp
+  float pa_temp   = getADCTemp(ads2, 2);  //Ctrl Brd, Case temp
+  SerialUSB.println("---------------------------------------");
+  SerialUSB.print("     Imon Temp [C]: "); SerialUSB.println(i_temp);
+  SerialUSB.print("     Case Temp [C]: "); SerialUSB.println(case_temp);
+  SerialUSB.print("       PA Temp [C]: "); SerialUSB.println(pa_temp);
+
+
+  float shunt_volts; float bus_volts; float bus_current;
+  getDCPower(&shunt_volts, &bus_volts, &bus_current);
+  SerialUSB.print("Shunt Voltage [mV]: "); SerialUSB.println(shunt_volts);
+  SerialUSB.print("  Bus Voltage  [V]: "); SerialUSB.println(bus_volts);
+  SerialUSB.print("  Bus Current [mA]: "); SerialUSB.println(bus_current);
+  
+
+  float pa_fwd = 0.0; float pa_rev = 0.0;
+  getRFPower(&pa_fwd, &pa_rev);
+  SerialUSB.print("     PA RF FWD [V]: "); SerialUSB.println(pa_fwd);
+  SerialUSB.print("     PA RF REV [V]: "); SerialUSB.println(pa_rev);
+  
+  //Blink(LED_PIN,1000,1); // wait for a second
+  delay(500);
 }
 
 void Blink(byte PIN, byte DELAY_MS, byte loops)
@@ -122,24 +143,57 @@ void Blink(byte PIN, byte DELAY_MS, byte loops)
       }
     }
 
-void getPower()
+void getDCPower(float* shuntvoltage, float* busvoltage, float* current_mA)
 {
-  float shuntvoltage = 0;
-  float busvoltage = 0;
-  float current_mA = 0;
-  float loadvoltage = 0;
+  //float shuntvoltage = 0;
+  //float busvoltage = 0;
+  //float current_mA = 0;
+  //float loadvoltage = 0;
 
-  shuntvoltage = ina260.getShuntVoltage_mV();
-  busvoltage = ina260.getBusVoltage_V();
-  current_mA = ina260.getCurrent_mA();
+  *shuntvoltage = ina260.getShuntVoltage_mV();
+  *busvoltage = ina260.getBusVoltage_V();
+  *current_mA = ina260.getCurrent_mA();
    
-  SerialUSB.print("Bus Voltage:   "); SerialUSB.print(busvoltage); SerialUSB.print(" V , \t");
-  SerialUSB.print("Shunt Voltage: \t"); SerialUSB.print(shuntvoltage); SerialUSB.print(" mV \t");
-  SerialUSB.print("Current:       \t"); SerialUSB.print(current_mA); SerialUSB.println(" mA");
+  //SerialUSB.print("Bus Voltage:   "); SerialUSB.print(busvoltage); SerialUSB.print(" V , \t");
+  //SerialUSB.print("Shunt Voltage: \t"); SerialUSB.print(shuntvoltage); SerialUSB.print(" mV \t");
+  //SerialUSB.print("Current:       \t"); SerialUSB.print(current_mA); SerialUSB.println(" mA");
 
-  delay(10); //small delay for the terminal  
+  delay(10); //small delay for the terminal
+  return;  
 }
 
+float getADCTemp(Adafruit_ADS1115 adc, int chan)
+{
+  adc.setGain(GAIN_TWO);         // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV <--USING
+  int16_t adc_val;
+  adc_val = adc.readADC_SingleEnded(chan);
+  float volts = adc_val * 0.0625;// - 50;
+  float V0 = 500;
+  float Tc = 10;
+  float tempC = (volts - V0)/Tc;
+  return tempC;
+}
+
+void getRFPower(float* fwd, float* rev)
+{
+  //                                                          ADS1015         ADS1115
+  //                                                          -------         -------
+  // ads.setGain(GAIN_TWOTHIRDS);   // 2/3x gain +/- 6.144V  1 bit = 3mV      0.1875mV (default)
+  // ads.setGain(GAIN_ONE);         // 1x gain   +/- 4.096V  1 bit = 2mV      0.125mV
+  // ads.setGain(GAIN_TWO);         // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV <--USING
+  // ads.setGain(GAIN_FOUR);        // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
+  // ads.setGain(GAIN_EIGHT);       // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
+  // ads.setGain(GAIN_SIXTEEN);     // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+  
+  ads2.setGain(GAIN_TWO);         // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV <--USING
+  int16_t adc_fwd;
+  int16_t adc_rev;
+  adc_fwd = ads2.readADC_SingleEnded(0);
+  adc_rev = ads2.readADC_SingleEnded(1);
+  *fwd = adc_fwd * 0.0625;// - 50;
+  *rev = adc_rev * 0.0625;// - 50;
+  return;
+}
 
 float getTemp()
 {
@@ -151,6 +205,7 @@ float getTemp()
   // ads.setGain(GAIN_FOUR);        // 4x gain   +/- 1.024V  1 bit = 0.5mV    0.03125mV
   // ads.setGain(GAIN_EIGHT);       // 8x gain   +/- 0.512V  1 bit = 0.25mV   0.015625mV
   // ads.setGain(GAIN_SIXTEEN);     // 16x gain  +/- 0.256V  1 bit = 0.125mV  0.0078125mV
+  
   ads2.setGain(GAIN_TWO);         // 2x gain   +/- 2.048V  1 bit = 1mV      0.0625mV <--USING
   int16_t adc0;
   adc0 = ads2.readADC_SingleEnded(3);
@@ -161,7 +216,7 @@ float getTemp()
   float V0 = 500;
   float Tc = 10;
   float tempC = (volts - V0)/Tc;
-  float tempF = tempC * 9 / 5 + 32;
+  //float tempF = tempC * 9 / 5 + 32;
   return tempC;
 }
 
