@@ -56,7 +56,7 @@
   #define SERIAL_BAUD   9600
   String serIn; // stores incoming serial commands
   String netIn; //stores incoming network commands
-  int lcd_state     = 1;  //LCD menu state: 0 = Temps, 1 = DC PWR, 2 = RF Power, 3 = CUSTOM
+  int lcd_state     = 0;  //LCD menu state: 0 = Temps, 1 = DC PWR, 2 = RF Power, 3 = CUSTOM
   int pa_state      = 0;  //PA Deck STATE: 0 = Boot, 1 = RX, 2 = TX_SEQ, 3 = TX, 4 = RX_SEQ, 5 = FAULT
   float i_temp      = 0;  //I monitor temp [C]
   float case_temp   = 0;  //Case temp [C]
@@ -79,12 +79,19 @@
 void setup() {
   // initialize digital pin outputs.
   pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
   pinMode(VHF_PTT, OUTPUT);
+  digitalWrite(VHF_PTT, LOW);
   pinMode(UHF_PTT, OUTPUT);
+  digitalWrite(UHF_PTT, LOW);
   pinMode(PA_FAN, OUTPUT);
+  digitalWrite(PA_FAN, LOW);
   pinMode(VHF_COAX_REL, OUTPUT);
+  digitalWrite(VHF_COAX_REL, LOW);
   pinMode(UHF_COAX_REL, OUTPUT);
+  digitalWrite(UHF_COAX_REL, LOW);
   pinMode(PA_PWR_REL, OUTPUT);
+  digitalWrite(PA_PWR_REL, LOW);
   pinMode(WIZ_CS, OUTPUT);
 
   //initialize digital pin inputs
@@ -148,19 +155,25 @@ void loop() {
   getRFPower(&pa_fwd, &pa_rev);
   
   /* ---- GET Digital inputs ---- */
-  btn_red_state = digitalRead(BTN_RED);
-  if (!btn_red_state){//Red Button Pressed
-    
-  }
-  btn_blk_state = digitalRead(BTN_BLK);
-  if (!btn_blk_state){//Black Button Pressed
-    
-  }
   thermo  = digitalRead(THERMO);
   alert_i = digitalRead(ALERT_I);
   alert_t = digitalRead(ALERT_T);
-  
 
+  
+  btn_red_state = digitalRead(BTN_RED);
+  if (!btn_red_state){//Red Button Pressed
+    lcd_state += 1;
+  }
+  btn_blk_state = digitalRead(BTN_BLK);
+  if (!btn_blk_state){//Black Button Pressed
+    lcd_state -= 1;
+  }
+  if (lcd_state >= 3){
+    lcd_state = 0;
+  }
+  if (lcd_state <0) {
+    lcd_state = 2;
+  }
   if (lcd_state == 0){
     updateLcdTemps(&i_temp, &case_temp, &pa_temp);
   }
@@ -175,10 +188,11 @@ void loop() {
   //printData();
   
   //Blink(LED_PIN,1000,1); // wait for a second
-  delay(500);
+  delay(200);
   netIn = ""; //reset network input string
 }
 // --END MAIN LOOP -- //
+
 
 void printTlmString(){
   SerialUSB.print("$,");
@@ -257,7 +271,7 @@ void updateLcdRfPower(float* pa_fwd, float* pa_rev){
  
   //lcd.print("S:"); lcd.print(*i_temp); lcd.print(" ");
   lcd.print("FWD:"); lcd.println(*pa_fwd);
-  lcd.print("REV:"); lcd.print(*pa_fwd);
+  lcd.print("REV:"); lcd.print(*pa_rev);
   return;
 }
 
