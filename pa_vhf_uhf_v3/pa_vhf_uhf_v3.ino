@@ -237,13 +237,16 @@ void loop() {
   measRfPowerVolts(&pa_fwd_mv, &pa_rev_mv);
   computeRfPowerWatts();
   computeVswr();
+  //Comment out below if statements for PA Calibration
+  //  If not commented, will trip VSWR fault when measuring reverse power voltage in forward direction.
+  /*
   if ((vswr > 3) & (pa_state != 5)){ //not already in VSWR Fault State
     fault_vswr = vswr;
     fault_fwd_pwr = pa_fwd_pwr;
     fault_rev_pwr = pa_rev_pwr;
     setStateFault(5); //5 = VSWR Fault
   }
-  
+  */
   /* ---- GET Digital inputs ---- */
   thermo  = digitalRead(THERMO);
   alert_i = digitalRead(ALERT_I);
@@ -690,7 +693,7 @@ void Setup_LCD(){
   delay(10);
  
   lcd_set_contrast(255);
-  lcd_set_brightness(200);
+  lcd_set_brightness(100);
   //lcd_set_rgb(255,0,0);
   lcd_clear();
   
