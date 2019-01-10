@@ -80,7 +80,8 @@ int vhf_coax_rel  = LOW;
 int uhf_coax_rel  = LOW;
 int vhf_ptt       = LOW;
 int uhf_ptt       = LOW;
-uint8_t manual_fan = LOW;
+uint8_t manual_fan = LOW;  //Manual Fan override
+uint8_t cal_mode  = LOW;   //Calibration mode, ignores VSWR and PA overcurrents
 
 float fan_thresh_hi = 30; //Fan Threshold Hi Temp, above = fan on
 float fan_thresh_lo = 28; //Fan Threshold Lo Temp, below = fan off
@@ -231,22 +232,24 @@ void loop() {
 
   /* ---- GET DC Power information---- */
   getDCPower(&shunt_volts, &bus_volts, &bus_current);
-  if (bus_current > current_thresh){ setStateFault(6); } //6 = Overcurrent Fault
-  
+  if (!cal_mode){
+    if (bus_current > current_thresh){ setStateFault(6); } //6 = Overcurrent Fault
+  }
   /* ---- GET RF Power Information ---- */
   measRfPowerVolts(&pa_fwd_mv, &pa_rev_mv);
   computeRfPowerWatts();
   computeVswr();
   //Comment out below if statements for PA Calibration
   //  If not commented, will trip VSWR fault when measuring reverse power voltage in forward direction.
-  /*
-  if ((vswr > 3) & (pa_state != 5)){ //not already in VSWR Fault State
-    fault_vswr = vswr;
-    fault_fwd_pwr = pa_fwd_pwr;
-    fault_rev_pwr = pa_rev_pwr;
-    setStateFault(5); //5 = VSWR Fault
+  if (!cal_mode){
+    if ((vswr > 3) & (pa_state != 5)){ //not already in VSWR Fault State
+      fault_vswr = vswr;
+      fault_fwd_pwr = pa_fwd_pwr;
+      fault_rev_pwr = pa_rev_pwr;
+      setStateFault(5); //5 = VSWR Fault
+    }
   }
-  */
+
   /* ---- GET Digital inputs ---- */
   thermo  = digitalRead(THERMO);
   alert_i = digitalRead(ALERT_I);
@@ -310,6 +313,10 @@ void processNetCommand(EthernetClient* client){
   else if (netIn.charAt(0) == 'f'){//MAnual Fan Override
     //manual fan override
     manual_fan = ~manual_fan; //toggle
+  }
+  else if (netIn.charAt(0) == 'o'){//Toggle Calibration Mode
+    //manual fan override
+    cal_mode = ~cal_mode; //toggle
   }
   else if (netIn.charAt(0) == 'c'){//clear eeprom reset counter
     EEPROM.write(eeprom_boot_addr, 0); // FIRST Argument is address of register and 2nd is value 
@@ -466,7 +473,8 @@ void sendTlmString(EthernetClient* server){
   server->print(vhf_coax_rel); server->print(",");
   server->print(uhf_coax_rel); server->print(",");
   server->print(vhf_ptt); server->print(",");
-  server->println(uhf_ptt); 
+  server->print(uhf_ptt); server->print(",");
+  server->println(cal_mode);
   return;
 }
 
@@ -502,7 +510,8 @@ void printTlmString(){
   SerialUSB.print(vhf_coax_rel); SerialUSB.print(",");
   SerialUSB.print(uhf_coax_rel); SerialUSB.print(",");
   SerialUSB.print(vhf_ptt); SerialUSB.print(",");
-  SerialUSB.println(uhf_ptt); 
+  SerialUSB.print(uhf_ptt); SerialUSB.print(",");
+  SerialUSB.println(cal_mode);
   return;
 }
 
