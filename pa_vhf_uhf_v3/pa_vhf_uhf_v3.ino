@@ -239,10 +239,9 @@ void loop() {
   measRfPowerVolts(&pa_fwd_mv, &pa_rev_mv);
   computeRfPowerWatts();
   computeVswr();
-  //Comment out below if statements for PA Calibration
-  //  If not commented, will trip VSWR fault when measuring reverse power voltage in forward direction.
+  
   if (!cal_mode){
-    if ((vswr > 3) & (pa_state != 5)){ //not already in VSWR Fault State
+    if ((pa_fwd_pwr > 1.0) & (vswr > 3) & (pa_state != 5)){ //not already in VSWR Fault State
       fault_vswr = vswr;
       fault_fwd_pwr = pa_fwd_pwr;
       fault_rev_pwr = pa_rev_pwr;
@@ -338,12 +337,20 @@ void computeRfPowerWatts(){
   }
   if (pa_fwd_mv > 25) {
     if (pa_state == 2){//VHF_TX
-      pa_fwd_pwr = 0.00002 * pa_fwd_mv * pa_fwd_mv + 0.0134 * pa_fwd_mv - 0.4473;
-      pa_rev_pwr = 0.000007 * pa_rev_mv * pa_rev_mv + 0.0052 * pa_rev_mv - 0.1905;
+      //--SN1197302 VHF Conversion Equations, Amateur Band PA --
+      //pa_fwd_pwr = 0.00002 * pa_fwd_mv * pa_fwd_mv + 0.0134 * pa_fwd_mv - 0.4473;
+      //pa_rev_pwr = 0.000007 * pa_rev_mv * pa_rev_mv + 0.0052 * pa_rev_mv - 0.1905;
+      //--SN1107313 VHF Conversion Equations, Federal Band PA -- 
+      pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0124 * pa_fwd_mv - 1.0758;
+      pa_rev_pwr = 0.00002 * pa_rev_mv * pa_rev_mv + 0.0019 * pa_rev_mv + 0.1684;
     }
     else if (pa_state == 3){//UHF_TX
-      pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0044 * pa_fwd_mv - 0.0164;
-      pa_rev_pwr = 0.000009 * pa_rev_mv * pa_rev_mv + 0.001 * pa_rev_mv + 0.0152;
+      //--SN1197302 UHF Conversion Equations, Amateur Band PA --
+      //pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0044 * pa_fwd_mv - 0.0164;
+      //pa_rev_pwr = 0.000009 * pa_rev_mv * pa_rev_mv + 0.001 * pa_rev_mv + 0.0152;
+      //--SN1197302 UHF Conversion Equations, Amateur Band PA --
+      pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0038 * pa_fwd_mv - 0.0199;
+      pa_rev_pwr = 0.00001 * pa_rev_mv * pa_rev_mv + 0.0015 * pa_rev_mv + 0.0956;
     }  
     if (pa_fwd_pwr < 0){ pa_fwd_pwr = 0; }
     if (pa_rev_pwr < 0){ pa_rev_pwr = 0; }
