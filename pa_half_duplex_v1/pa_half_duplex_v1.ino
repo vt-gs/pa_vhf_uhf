@@ -96,20 +96,15 @@ int btn_a_state   = HIGH;
 int btn_b_state   = HIGH;
 int pa_fan        = LOW;
 int pa_pwr_rel    = LOW;
-//int vhf_coax_rel  = LOW;
-//int rad_coax_rel  = LOW;
-//int uhf_coax_rel  = LOW;
-//int ant_coax_rel  = LOW;
-//NOTE:  reading coax relay state has no effect....pulse latching, likely only reads low
-//int vhf_ptt       = LOW;
 int event1_ptt    = LOW; //Sequencer Event 1
-//int uhf_ptt     = LOW;
+int ptt_in        = HIGH;
+bool ptt_flag     = false; //flag to indicate manual ptt used to set TX mode.
 uint8_t manual_fan = LOW;  //Manual Fan override
 uint8_t cal_mode  = LOW;   //Calibration mode, ignores VSWR and PA overcurrents
 
 float fan_thresh_hi = 30; //Fan Threshold Hi Temp, above = fan on
 float fan_thresh_lo = 28; //Fan Threshold Lo Temp, below = fan off
-float current_thresh = 8800; //Overcurrent Threshold, above = PA Overcurrent fault state
+float current_thresh = 6000; //Overcurrent Threshold [mA], above = PA Overcurrent fault state
 
 //PTT delay time, amount of time between each event
 int16_t ptt_delay = 40;
@@ -256,10 +251,26 @@ void loop() {
     }
   }
 
+  ptt_in = digitalRead(PTT_IN);
+  //In RX Mode, PTT flag is false, and PTT is triggered
+  if ((pa_state == 1) & (!ptt_flag) & (!ptt_in)){
+    ptt_flag = true; //indicate manual ptt used
+    setStateTx(); //set mode TX
+  }
+  //PTT was triggered (ptt_flag), PTT no longer triggered, and in TX Mode
+  else if ((pa_state == 2) & (ptt_flag) & (ptt_in)){ //PTT not triggered, ptt_flag and in TX mode
+    ptt_flag = false; //reset ptt_flag
+    setStateRxAll(); //set mode RX
+  }
+  
   /* ---- GET DC Power information---- */
   getDCPower(&shunt_volts, &bus_volts, &bus_current);
   if (!cal_mode){
-    if (bus_current > current_thresh){ setStateFault(5); } //5 = Overcurrent Fault
+    if (bus_current > current_thresh){ //exceeds threshold, might be transient inrush
+      delay(100); //wait 100 ms, then check again
+      getDCPower(&shunt_volts, &bus_volts, &bus_current);
+      if (bus_current > current_thresh){ setStateFault(5); } //5 = Overcurrent Fault
+    }
   }
   /* ---- GET RF Power Information ---- */
   measRfPowerVolts(&pa_fwd_mv, &pa_rev_mv);
@@ -356,10 +367,10 @@ void computeRfPowerWatts(){
     pa_rev_pwr = fault_rev_pwr;
     return;
   }
-  if (pa_fwd_mv > 25) {
+  if (pa_fwd_mv > 15) {
     if (pa_state == 2){ //TX State
-      pa_fwd_pwr = 0;
-      pa_rev_pwr = 0;
+      pa_fwd_pwr = 0.00004 * pa_fwd_mv * pa_fwd_mv - 0.0018 * pa_fwd_mv + 0.0713;
+      pa_rev_pwr = 0.000006 * pa_rev_mv * pa_rev_mv + 0.0002 * pa_rev_mv + 0.0108;
     }
     /*if (pa_state == 2){//VHF_TX
       //--SN1197302 VHF Conversion Equations, Amateur Band PA --
