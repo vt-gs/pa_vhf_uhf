@@ -1,8 +1,16 @@
 /*
-  VHF/UHF Power Amplifier Control Board
+  Half Duplex Power Amplifier Control Board
   See link for Eagle schematics and board
   https://github.com/vt-gs/eagle/tree/master/pa_vhf_uhf
 
+  NOTE ABOUT COAX RELAYS
+  Pulse Latching 12VDC are used in this design.
+  Triggered through opto-isolated circuit
+  BOTH RELAYS IN PARALLEL -> one pin for TX, one pin for RX
+  HIGH on RELAY Pin = ENGAGE
+   LOW on RELAY PIN = DISENGAGE
+
+  FUTURE VERSIONS Should read in te feedback from the relays for the state....not in this HW design
   
 */
 #include "Arduino.h"
@@ -22,9 +30,11 @@
 //#define UHF_PTT       12
 #define PA_FAN        A2
 //#define VHF_COAX_REL  A0
-#define RAD_COAX_REL  A0
+//#define RAD_COAX_REL  A0
+#define COAX_REL_TX1 A0 //RAD&ANT Coax Relays, POS1=TX
 //#define UHF_COAX_REL  A1
-#define ANT_COAX_REL  A1
+//#define ANT_COAX_REL  A1
+#define COAX_REL_RX2 A1 //RAD&ANT Coax Relays, POS2=RX
 #define PA_PWR_REL    A3
 #define WIZ_CS        11
 #define WIZ_RST       A4
@@ -39,6 +49,8 @@
 #define ALERT_T       9
 #define THERMO        0
 //*********************************************************************
+
+
 
 //****Instantiate Peripheral Objects*********************************
 Adafruit_ADS1115 ads1(0x48);  /* current monitor */
@@ -85,12 +97,13 @@ int btn_b_state   = HIGH;
 int pa_fan        = LOW;
 int pa_pwr_rel    = LOW;
 //int vhf_coax_rel  = LOW;
-int rad_coax_rel  = LOW;
+//int rad_coax_rel  = LOW;
 //int uhf_coax_rel  = LOW;
-int ant_coax_rel  = LOW;
+//int ant_coax_rel  = LOW;
+//NOTE:  reading coax relay state has no effect....pulse latching, likely only reads low
 //int vhf_ptt       = LOW;
-int event1_ptt       = LOW; //Sequencer Event 1
-//int uhf_ptt       = LOW;
+int event1_ptt    = LOW; //Sequencer Event 1
+//int uhf_ptt     = LOW;
 uint8_t manual_fan = LOW;  //Manual Fan override
 uint8_t cal_mode  = LOW;   //Calibration mode, ignores VSWR and PA overcurrents
 
@@ -137,12 +150,19 @@ void setup() {
   //digitalWrite(UHF_PTT, LOW);
   pinMode(PA_FAN, OUTPUT);
   digitalWrite(PA_FAN, LOW);
-  pinMode(RAD_COAX_REL, OUTPUT);
-  digitalWrite(RAD_COAX_REL, LOW);
-  pinMode(ANT_COAX_REL, OUTPUT);
-  digitalWrite(ANT_COAX_REL, LOW);
+
+  //Initialize PA to Receive State
+  pinMode(COAX_REL_TX1, OUTPUT);
+  pinMode(COAX_REL_RX2, OUTPUT);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, HIGH);//PLACE RELAYS IN RX MODE
+  delay(100);
+  digitalWrite(COAX_REL_RX2, LOW); //Pulse latching....go into LOW state
+  pa_state = 1; //1 = RX
+  
   pinMode(PA_PWR_REL, OUTPUT);
-  digitalWrite(PA_PWR_REL, LOW);
+  digitalWrite(PA_PWR_REL, LOW); //PA OFF
+  
   pinMode(WIZ_CS, OUTPUT);
 
   //initialize digital pin inputs
@@ -196,9 +216,6 @@ void setup() {
   delay(1000); //give ethernet time to setup and initialize
   server.begin();
   
-  //Initialize PA to Receive State
-  pa_state = 1; 
-
   lcd_clear();
   lcd_home();
   lcd.println("Setup Complete");
@@ -223,8 +240,6 @@ void loop() {
     processNetCommand(&client);
   }
 
-  //SerialUSB.println(MCUSR, HEX);
-  
   /* ---- GET Temperatures from ADCs---- */
   i_temp    = getADCTemp(ads1, 0);  //INA260 ADC, Imon temp
   case_temp = getADCTemp(ads2, 3);  //Ctrl Brd ADC, Case temp
@@ -268,8 +283,8 @@ void loop() {
   /* ---- Independently read digital outputs ---- */
   pa_fan        = digitalRead(PA_FAN);
   pa_pwr_rel    = digitalRead(PA_PWR_REL);
-  rad_coax_rel  = digitalRead(RAD_COAX_REL);
-  ant_coax_rel  = digitalRead(ANT_COAX_REL);
+  //rad_coax_rel  = digitalRead(RAD_COAX_REL);
+  //ant_coax_rel  = digitalRead(ANT_COAX_REL);
   event1_ptt    = digitalRead(EVENT1_PTT);
 
   btn_a_state = digitalRead(BTN_A);
@@ -310,7 +325,7 @@ void processNetCommand(EthernetClient* client){
       setStateRxAll();
     }
   }
-  else if (netIn.charAt(0) == 't'){//VHF_TX
+  else if (netIn.charAt(0) == 't'){//TX
     if (pa_state == 1){
       setStateTx();
     }
@@ -336,13 +351,17 @@ void processNetCommand(EthernetClient* client){
 }
 
 void computeRfPowerWatts(){
-  if (pa_state == 4){//in VSWR FAULT State
+  if (pa_state == 3){//in VSWR FAULT State
     pa_fwd_pwr = fault_fwd_pwr; //assign retained fault vswr
     pa_rev_pwr = fault_rev_pwr;
     return;
   }
   if (pa_fwd_mv > 25) {
-    if (pa_state == 2){//VHF_TX
+    if (pa_state == 2){ //TX State
+      pa_fwd_pwr = 0;
+      pa_rev_pwr = 0;
+    }
+    /*if (pa_state == 2){//VHF_TX
       //--SN1197302 VHF Conversion Equations, Amateur Band PA --
       //pa_fwd_pwr = 0.00002 * pa_fwd_mv * pa_fwd_mv + 0.0134 * pa_fwd_mv - 0.4473;
       //pa_rev_pwr = 0.000007 * pa_rev_mv * pa_rev_mv + 0.0052 * pa_rev_mv - 0.1905;
@@ -357,7 +376,7 @@ void computeRfPowerWatts(){
       //--SN1197302 UHF Conversion Equations, Amateur Band PA --
       pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0038 * pa_fwd_mv - 0.0199;
       pa_rev_pwr = 0.00001 * pa_rev_mv * pa_rev_mv + 0.0015 * pa_rev_mv + 0.0956;
-    }  
+    } */ 
     if (pa_fwd_pwr < 0){ pa_fwd_pwr = 0; }
     if (pa_rev_pwr < 0){ pa_rev_pwr = 0; }
   }
@@ -400,9 +419,11 @@ void setStateTx(){
   //PROBLEM WITH RELAYS, SET STATE LOW UNTIL REPLACED
   //digitalWrite(RAD_COAX_REL, HIGH);
   //digitalWrite(ANT_COAX_REL, HIGH);
-  digitalWrite(RAD_COAX_REL, LOW);
-  digitalWrite(ANT_COAX_REL, LOW);
+  digitalWrite(COAX_REL_TX1, HIGH);
+  digitalWrite(COAX_REL_RX2, LOW);
   delay(ptt_delay);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, LOW);
   digitalWrite(PA_PWR_REL, HIGH);
   digitalWrite(PA_FAN, HIGH);
   delay(ptt_delay);
@@ -414,9 +435,11 @@ void setStateTx(){
 void setStateRxAll(){
   digitalWrite(PA_PWR_REL, LOW);
   delay(ptt_delay);
-  digitalWrite(ANT_COAX_REL, LOW);
-  digitalWrite(RAD_COAX_REL, LOW);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, HIGH);
   delay(ptt_delay);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, LOW);
   digitalWrite(EVENT1_PTT, LOW);
   delay(ptt_delay);
   lcd_state = 3;
@@ -428,9 +451,11 @@ void setStateFault(uint8_t state){
   digitalWrite(PA_FAN, HIGH);
   digitalWrite(PA_PWR_REL, LOW);
   delay(ptt_delay);
-  digitalWrite(RAD_COAX_REL, LOW);
-  digitalWrite(ANT_COAX_REL, LOW);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, HIGH); //Place in RX mode
   delay(ptt_delay);
+  digitalWrite(COAX_REL_TX1, LOW);
+  digitalWrite(COAX_REL_RX2, LOW);
   digitalWrite(EVENT1_PTT, LOW);
   delay(ptt_delay);
   lcd_state = 3;
@@ -467,8 +492,6 @@ void sendTlmString(EthernetClient* server){
   server->print(alert_t); server->print(",");
   server->print(pa_fan); server->print(",");
   server->print(pa_pwr_rel); server->print(",");
-  server->print(rad_coax_rel); server->print(",");
-  server->print(ant_coax_rel); server->print(",");
   server->print(event1_ptt); server->print(",");
   server->println(cal_mode);
   return;
@@ -502,8 +525,6 @@ void printTlmString(){
   SerialUSB.print(alert_t); SerialUSB.print(",");
   SerialUSB.print(pa_fan); SerialUSB.print(",");
   SerialUSB.print(pa_pwr_rel); SerialUSB.print(",");
-  SerialUSB.print(rad_coax_rel); SerialUSB.print(",");
-  SerialUSB.print(ant_coax_rel); SerialUSB.print(",");
   SerialUSB.print(event1_ptt); SerialUSB.print(",");
   SerialUSB.println(cal_mode);
   return;
@@ -703,7 +724,7 @@ void Setup_LCD(){
   lcd.write(0x48);
   delay(10);   // we suggest putting delays after each command 
  
-  lcd.println("VHF/UHF Power ");
+  lcd.println("S-Band Power ");
   lcd.print("Amplifier");
 
   //lcd_set_rgb(255,100,255);
