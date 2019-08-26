@@ -42,12 +42,14 @@ Thanos_INA260 ina260;
 
 // assign MAC and IP Addresses 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; 
-IPAddress ip(192, 168, 20, 80);  
+//IPAddress ip(192, 168, 20, 80);  
+IPAddress ip(192, 168, 30, 10);  
 unsigned int localPort = 2000;      // local port to listen on
 EthernetServer server(localPort);
 
 //****Global Variable Definition*********************************
 #define SERIAL_BAUD   9600
+String sketch = "pa_vhf_uhf_v3";
 String serIn; //stores incoming serial commands
 String netIn; //stores incoming network commands
 volatile uint8_t lcd_state = 0;  //LCD menu state: 0 = Temps, 1 = DC PWR, 2 = RF Power, 3 = CUSTOM
@@ -327,6 +329,9 @@ void processNetCommand(EthernetClient* client){
     eeprom_boot_cnt = EEPROM.read(eeprom_boot_addr);
     client->println(eeprom_boot_cnt);
   }
+  if (netIn.charAt(0) == 's'){//eeprom_query
+    client->println(eeprom_boot_cnt);
+  }
 }
 
 void computeRfPowerWatts(){
@@ -348,7 +353,7 @@ void computeRfPowerWatts(){
       //--SN1197302 UHF Conversion Equations, Amateur Band PA --
       //pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0044 * pa_fwd_mv - 0.0164;
       //pa_rev_pwr = 0.000009 * pa_rev_mv * pa_rev_mv + 0.001 * pa_rev_mv + 0.0152;
-      //--SN1197302 UHF Conversion Equations, Amateur Band PA --
+      //--SN1107313 UHF Conversion Equations, Federal Band PA -- 
       pa_fwd_pwr = 0.00003 * pa_fwd_mv * pa_fwd_mv + 0.0038 * pa_fwd_mv - 0.0199;
       pa_rev_pwr = 0.00001 * pa_rev_mv * pa_rev_mv + 0.0015 * pa_rev_mv + 0.0956;
     }  
