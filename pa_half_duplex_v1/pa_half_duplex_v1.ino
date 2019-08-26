@@ -60,7 +60,7 @@ Thanos_INA260 ina260;
 
 // assign MAC and IP Addresses 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; 
-IPAddress ip(192, 168, 20, 80);  
+IPAddress ip(192, 168, 30, 51);  
 unsigned int localPort = 2000;      // local port to listen on
 EthernetServer server(localPort);
 
